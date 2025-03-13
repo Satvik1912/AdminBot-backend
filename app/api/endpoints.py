@@ -3,12 +3,9 @@ from pydantic import BaseModel
 from app.services.query_generator import generate_sql
 from app.services.database import execute_sql_query
 from app.services.result_formatter import format_results
+from app.models.models import UserInputRequest
 
 router = APIRouter()
-
-# Define the expected request body
-class UserInputRequest(BaseModel):
-    user_input: str
 
 @router.post("/generate-sql/")
 def process_user_input(request: UserInputRequest):
