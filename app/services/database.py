@@ -1,5 +1,16 @@
 import pymysql
 from app.core.config import config
+from pymongo import MongoClient
+from app.core.config import *
+
+# MongoDB Connection
+client = MongoClient(MONGO_URI)  # Uses the MongoDB Atlas URI
+db = client[MONGO_DB_NAME]  # Uses the correct database name
+admins_collection = db["admins"]  # Admin credentials stored here
+
+def get_database():
+    """Returns the MongoDB database instance"""
+    return db
 
 def get_db_connection():
     """Establish a database connection and return the connection object."""

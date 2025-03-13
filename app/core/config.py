@@ -1,8 +1,19 @@
+
 import os
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+# MongoDB Configuration
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+
+JWT_SECRET_KEY = "your_secret_key"  # Change this
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
 
 class Config:
     DB_HOST = os.getenv("DB_HOST")
@@ -17,8 +28,14 @@ class Config:
     REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
     REDIS_DB = int(os.getenv("REDIS_DB", 0))
 
-    #Mongo Config
+    
+
     MONGO_URI = os.getenv("MONGO_URI")
     MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+
+    
+
+   
+
 
 config = Config()
