@@ -5,3 +5,5 @@ app = FastAPI(title="Loan Chatbot API")
 
 # Register API routes
 app.include_router(router)
+
+
