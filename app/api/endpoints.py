@@ -27,6 +27,10 @@ async def process_user_input(
         return {"message": sql_query}
     elif sql_query.lower().startswith("select"):
         query_results = execute_sql_query(sql_query)
+        # generateExcelService gets called -> .xlsx file
+        formatted_response = format_results(query_results)
+        # take query_results and user_input into isgraphNeeded and which type if yes call visualization_service -> generate image(.png)
+        # call redis service to insert new thread/conversation
         return {"sql_query": sql_query, "results": query_results}
     else:
         raise HTTPException(status_code=400, detail="Invalid query generated.")
