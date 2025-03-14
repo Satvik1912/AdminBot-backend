@@ -1,79 +1,201 @@
 import google.generativeai as genai
 from app.core.config import config
 import pandas as pd
-from fastapi import HTTPException
-import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import os
+import uuid
+from datetime import datetime
 import google.generativeai as genai
-import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib.pyplot as plt
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Configure Gemini API
 genai.configure(api_key=config.GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-def get_chart_recommendation(user_input: str) -> str:
-    """Uses Gemini API to determine the best chart type for the given query result."""
-
-    prompt = f"""
-    Based on the following SQL query: "{user_input}",
-    decide the most appropriate chart type from: ["bar", "line", "pie", "scatter", "histogram"].
-    Return ONLY one word as the response (e.g., "bar", "line", "pie", "scatter", "histogram").
-    Do NOT include explanations, examples, or anything else.
-    """
-
+def get_chart_suggestion(data, user_query):
+    """Uses Gemini to suggest the best chart type for visualizing the data."""
     try:
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(prompt)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        
+        # Convert to DataFrame for analysis
+        df = pd.DataFrame(data)
+        
+        # Get column info for prompt
+        column_info = []
+        for col in df.columns:
+            dtype = str(df[col].dtype)
+            sample = str(df[col].iloc[0]) if not df.empty else "N/A"
+            column_info.append(f"{col} ({dtype}): Sample value: {sample}")
+        
+        column_info_str = "\n".join(column_info)
+        
+        prompt = f"""
+        You are an expert data visualization consultant. Based on the data structure and user query,
+        recommend the BEST chart type for visualization.
+        
+        ## USER QUERY
+        {user_query}
+        
+        ## DATA STRUCTURE
+        Number of rows: {len(df)}
+        Columns:
+        {column_info_str}
+        
+        ## AVAILABLE CHART TYPES
+        - bar: For comparing categories
+        - line: For trends over time or sequences
+        - pie: For part-to-whole relationships (limit to 7 categories max)
+        - scatter: For relationships between two variables
+        - area: For cumulative totals over time
+        - box: For distribution and outliers
+        - histogram: For distribution of a single variable
+        - heatmap: For showing patterns in a matrix of data
+        
+        ## RULES
+        - Choose ONLY ONE chart type based on the data and query
+        - For time-related queries, prefer line or area charts
+        - For category comparisons, prefer bar charts
+        - Limit pie charts to 7 categories or fewer
+        - Recommend box or histogram for distribution analysis
+        
+        ## OUTPUT FORMAT
+        Return ONLY ONE of the chart types listed above as a single word, with no explanation or additional text.
+        """
+        
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_DANGEROUS",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE",
+            },
+        ]
+        
+        response = model.generate_content(prompt, safety_settings=safety_settings)
         chart_type = response.text.strip().lower()
-
-        if chart_type not in ["bar", "line", "pie", "scatter", "histogram"]:
-            return "bar"  # Fallback in case of unexpected response
-
+        
+        # Validate chart type
+        valid_types = ["bar", "line", "pie", "scatter", "area", "box", "histogram", "heatmap"]
+        if chart_type not in valid_types:
+            logger.warning(f"Invalid chart type suggested: {chart_type}, defaulting to bar")
+            return "bar"
+            
+        logger.info(f"Suggested chart type: {chart_type}")
         return chart_type
+        
     except Exception as e:
-        print(f"Error determining chart type: {e}")
-        return "bar"  # Default fallback
+        logger.error(f"Error getting chart suggestion: {str(e)}")
+        return "bar"  # Default to bar chart on error
 
-def generate_chart(query_results: list, chart_type: str) -> str:
-    """
-    Generates a chart based on the recommended type and query results.
-    Saves as a PNG image and returns the base64-encoded image.
-    """
+# ======================== PLOTLY CHART GENERATION ========================
+def generate_plotly_chart(data, chart_type, user_query):
+    """Generates a Plotly chart based on the data and suggested chart type."""
+    if not data:
+        logger.warning("No data provided for chart generation")
+        return None
+
+    # Create a timestamp for unique chart naming
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = uuid.uuid4().hex[:8]
+    chart_path = f"chart_{unique_id}{chart_type}{timestamp}.png"
+
     try:
-        # Convert query results to DataFrame
-        df = pd.DataFrame(query_results)
+        # Convert to DataFrame for easier manipulation
+        df = pd.DataFrame(data)
 
-        if len(df.columns) < 2:
-            raise HTTPException(status_code=400, detail="Query results must have at least two columns")
+        # Ensure loan_amount is always used for the Y-axis
+        if "loan_amount" not in df.columns:
+            logger.error("No loan_amount column found. Using fallback column.")
+            y_col = df.select_dtypes(include=['number']).columns[0]  # Fallback to first numeric column
+        else:
+            y_col = "loan_amount"
 
-        plt.figure(figsize=(8, 5))
+        # Determine X-axis column intelligently
+        if "customer_name" in df.columns and any(keyword in user_query.lower() for keyword in ["top", "highest", "biggest"]):
+            x_col = "customer_name"  # Use customer name for top loan queries
+        elif "loan_date" in df.columns and "trend" in user_query.lower():
+            x_col = "loan_date"  # Use date for time-based queries
+        elif "loan_type" in df.columns and "loan amount" not in user_query.lower():
+            x_col = "loan_type"  # Default category when not asking for specific amounts
+        else:
+            x_col = df.columns[0]  # Fallback to the first column
 
-        x_column = df.columns[0]  # Assume first column as x-axis
-        y_column = df.columns[1]  # Assume second column as y-axis
+        # Create chart title based on user query
+        chart_title = f"Loan Data: {user_query}"
+        if len(chart_title) > 70:
+            chart_title = chart_title[:67] + "..."
+
+        # Generate appropriate chart based on type
+        fig = None
 
         if chart_type == "bar":
-            sns.barplot(x=df[x_column], y=df[y_column])
+            df = df.sort_values(by=y_col, ascending=False)
+            fig = px.bar(df, x=x_col, y=y_col, title=chart_title, color=x_col, text=y_col)
+
         elif chart_type == "line":
-            sns.lineplot(data=df, x=x_column, y=y_column, marker='o')
+            if "loan_date" in df.columns:
+                df["loan_date"] = pd.to_datetime(df["loan_date"])
+                df = df.sort_values(by="loan_date")
+                fig = px.line(df, x="loan_date", y=y_col, title=chart_title, markers=True)
+
         elif chart_type == "pie":
-            plt.pie(df[y_column], labels=df[x_column], autopct='%1.1f%%')
+            fig = px.pie(df, names=x_col, values=y_col, title=chart_title)
+
         elif chart_type == "scatter":
-            plt.scatter(df[x_column], df[y_column])
+            fig = px.scatter(df, x=x_col, y=y_col, title=chart_title)
+
+        elif chart_type == "area":
+            if "loan_date" in df.columns:
+                df["loan_date"] = pd.to_datetime(df["loan_date"])
+                df = df.sort_values(by="loan_date")
+                fig = px.area(df, x="loan_date", y=y_col, title=chart_title)
+
         elif chart_type == "histogram":
-            plt.hist(df[y_column], bins=10)
+            fig = px.histogram(df, x=y_col, title=chart_title)
 
-        plt.xlabel(x_column)
-        plt.ylabel(y_column)
-        plt.title(f"{chart_type.capitalize()} Chart")
+        elif chart_type == "box":
+            fig = px.box(df, y=y_col, title=chart_title)
 
-        # Save to a file
-        img_path = f"chart_{chart_type}.png"
-        plt.savefig(img_path, bbox_inches='tight')
-        plt.close()
-        
-        return img_path
-    
+        elif chart_type == "heatmap":
+            fig = px.imshow(df.corr(), title="Correlation Heatmap")
+
+        # Default to bar chart if no figure was created
+        if fig is None:
+            logger.warning(f"Could not create {chart_type} chart, defaulting to bar")
+            fig = px.bar(df, x=x_col, y=y_col, title=chart_title)
+
+        # Set consistent figure sizing and layout
+        fig.update_layout(
+            width=1000,
+            height=600,
+            template="plotly_white",
+            title={'text': chart_title, 'y': 0.95, 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'}
+        )
+
+        # Save the figure as an image
+        fig.write_image(chart_path)
+        logger.info(f"Chart generated at {chart_path}")
+        return chart_path
+
     except Exception as e:
-        print(f"Error generating chart {e}")
-    
+        logger.error(f"Error generating Plotly chart: {str(e)}")
+        return None

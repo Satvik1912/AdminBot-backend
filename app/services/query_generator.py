@@ -20,5 +20,4 @@ def generate_sql(user_input: str) -> str:
 
     response = model.generate_content([system_instruction, user_input])
     output = response.text.strip().strip("`").strip("sql").strip()
-    
     return output
