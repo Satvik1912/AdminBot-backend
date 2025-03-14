@@ -15,6 +15,13 @@ JWT_SECRET_KEY = "your_secret_key"  # Change this
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
 
+# Directory where generated Excel files will be stored
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EXCEL_STORAGE_PATH = os.path.join(BASE_DIR, "../../excel_files")
+
+# Ensure the directory exists
+os.makedirs(EXCEL_STORAGE_PATH, exist_ok=True)
+
 class Config:
     DB_HOST = os.getenv("DB_HOST")
     DB_USER = os.getenv("DB_USER")
