@@ -21,91 +21,83 @@ def get_chart_suggestion(data, user_query):
     """Uses Gemini to suggest the best chart type for visualizing the data."""
     try:
         model = genai.GenerativeModel("gemini-2.0-flash")
-        
+
         # Convert to DataFrame for analysis
         df = pd.DataFrame(data)
-        
-        # Get column info for prompt
-        column_info = []
-        for col in df.columns:
-            dtype = str(df[col].dtype)
-            sample = str(df[col].iloc[0]) if not df.empty else "N/A"
-            column_info.append(f"{col} ({dtype}): Sample value: {sample}")
-        
-        column_info_str = "\n".join(column_info)
-        
+
+        # Identify numerical and categorical columns
+        numerical_cols = df.select_dtypes(include=["number"]).columns.tolist()
+        categorical_cols = df.select_dtypes(include=["object"]).columns.tolist()
+        date_cols = [col for col in df.columns if "date" in col.lower()]
+
+        # Define keyword-based chart selection
+        query_lower = user_query.lower()
+        if any(word in query_lower for word in ["trend", "growth", "over time", "timeline", "emi payments"]):
+            return "line" if date_cols else "bar"
+        elif any(word in query_lower for word in ["compare", "highest", "top", "biggest", "ranking"]):
+            return "bar"
+        elif any(word in query_lower for word in ["distribution", "spread", "cibil", "loan amounts"]):
+            return "histogram"
+        elif any(word in query_lower for word in ["percentage", "share", "breakdown"]):
+            return "pie" if len(categorical_cols) == 1 else "bar"
+        elif any(word in query_lower for word in ["relationship", "correlation", "effect"]):
+            return "scatter" if len(numerical_cols) >= 2 else "bar"
+        elif any(word in query_lower for word in ["comparison", "loan type"]):
+            return "bar"
+        elif any(word in query_lower for word in ["outliers", "deviation"]):
+            return "box"
+
+        # If no clear match, send the data to Gemini for a decision
+        column_info = "\n".join([f"{col} ({df[col].dtype})" for col in df.columns])
         prompt = f"""
         You are an expert data visualization consultant. Based on the data structure and user query,
         recommend the BEST chart type for visualization.
-        
+
         ## USER QUERY
         {user_query}
-        
+
         ## DATA STRUCTURE
         Number of rows: {len(df)}
         Columns:
-        {column_info_str}
-        
+        {column_info}
+
         ## AVAILABLE CHART TYPES
         - bar: For comparing categories
         - line: For trends over time or sequences
         - pie: For part-to-whole relationships (limit to 7 categories max)
-        - scatter: For relationships between two variables
+        - scatter: For relationships between two numerical variables
         - area: For cumulative totals over time
         - box: For distribution and outliers
         - histogram: For distribution of a single variable
         - heatmap: For showing patterns in a matrix of data
-        
+
         ## RULES
         - Choose ONLY ONE chart type based on the data and query
         - For time-related queries, prefer line or area charts
         - For category comparisons, prefer bar charts
         - Limit pie charts to 7 categories or fewer
         - Recommend box or histogram for distribution analysis
-        
+
         ## OUTPUT FORMAT
         Return ONLY ONE of the chart types listed above as a single word, with no explanation or additional text.
         """
-        
-        safety_settings = [
-            {
-                "category": "HARM_CATEGORY_DANGEROUS",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE",
-            },
-        ]
-        
-        response = model.generate_content(prompt, safety_settings=safety_settings)
+
+        response = model.generate_content(prompt)
         chart_type = response.text.strip().lower()
-        
+
         # Validate chart type
         valid_types = ["bar", "line", "pie", "scatter", "area", "box", "histogram", "heatmap"]
         if chart_type not in valid_types:
             logger.warning(f"Invalid chart type suggested: {chart_type}, defaulting to bar")
             return "bar"
-            
+
         logger.info(f"Suggested chart type: {chart_type}")
         return chart_type
-        
+
     except Exception as e:
         logger.error(f"Error getting chart suggestion: {str(e)}")
         return "bar"  # Default to bar chart on error
-
+    
 # ======================== PLOTLY CHART GENERATION ========================
 def generate_plotly_chart(data, chart_type, user_query):
     """Generates a Plotly chart based on the data and suggested chart type."""
