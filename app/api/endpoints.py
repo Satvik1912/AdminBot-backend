@@ -120,7 +120,7 @@ async def download_excel(conversation_id: str, admin: dict = Depends(get_current
     )
 
 @router.delete("/migrate-thread/{thread_id}")
-async def migrate_and_delete_thread(thread_id: str):
+async def migrate_and_delete_thread(thread_id: str, admin: dict = Depends(get_current_admin)):
     """
     Migrate a thread to MongoDB and delete it from Redis.
     """
