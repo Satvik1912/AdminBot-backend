@@ -11,74 +11,77 @@ from app.services.visualization_service import get_chart_suggestion, generate_pl
 from app.services.redis_service import *
 import uuid
 from datetime import datetime
+import os
+from fastapi.responses import FileResponse
+from app.services.excel_service import generate_excel
+from app.services.redis_service import get_excel_path
 
 router = APIRouter()
-
 @router.post("/generate-response/")
 async def process_user_input(
     request: UserInputRequest, 
     admin: dict = Depends(get_current_admin)
 ):  
-    """Generates SQL query, executes it, and returns results (Admin only)."""
     admin_id = admin["admin_id"]
-    # sql_query = generate_sql(request.user_input)
-    sql_query = "SELECT * FROM loan;"
+    sql_query = generate_sql(request.user_input, request.thread_id if hasattr(request, "thread_id") else None)
+
+    logging.info(sql_query)
     if sql_query.lower() in ["unwanted", "restricted", "sensitive"]:
         return {"message": sql_query}
+    
     elif sql_query.lower().startswith("select"):
-        # query_results = execute_sql_query(sql_query)
-        query_results = [
-            ("Approved", 150),
-            ("Pending", 50),
-            ("Rejected", 30)
-        ]
-        # formatted_response = format_results(query_results)
-        formatted_response = "The chart describes what you have asked."
+        query_results = execute_sql_query(sql_query)
+        logging.info(f"Query Results Type: {type(query_results)}")
+        formatted_response = format_results(query_results)
         chart_type = get_chart_suggestion(query_results, request.user_input)
         chart_img = generate_plotly_chart(query_results, chart_type, request.user_input)
 
-        # Create a conversation record
+        conversation_id = str(uuid.uuid4())  # Generate UUID
+
         conversation_record = ConversationRecord(
-            conversation_id=str(uuid.uuid4()),  # Generate UUID
+            conversation_id=conversation_id,
             query=request.user_input,
-            response=formatted_response,  # Convert response to string
+            response=formatted_response,
             visualization=chart_img,
             timestamp=datetime.utcnow().isoformat(),
             data_type=[chart_type] if chart_type else []
         )
 
         if hasattr(request, "thread_id") and request.thread_id:
-            # Append to an existing thread
             append_result = append_conversation(request.thread_id, conversation_record.dict())
-            return {
+            response_data = {
                 "sql_query": sql_query,
                 "results": formatted_response,
                 "chart_type": chart_type,
                 "chart_image_url": chart_img,
                 "message": "Conversation appended",
                 "thread_id": request.thread_id,
-                "conversation_count": append_result["total_conversations"]
+                "conversation_count": append_result["total_conversations"],
+                "conversation_id": conversation_id
             }
         else:
-            # Create a new thread
-            thread_id = str(uuid.uuid4())  # Generate a new thread ID
+            thread_id = str(uuid.uuid4())
             thread_data = ThreadInsertRequest(
                 thread_id=thread_id,
                 admin_id=admin_id,
-                chat_name=request.user_input,  # Use user_input as chat name
+                chat_name=request.user_input,
                 conversations=[conversation_record]
             )
             insert_into_redis(thread_data.dict())
-            return {
+            response_data = {
                 "sql_query": sql_query,
                 "results": formatted_response,
                 "chart_type": chart_type,
                 "chart_image_url": chart_img,
                 "message": "New chat thread created",
-                "thread_id": thread_id
+                "thread_id": thread_id,
+                "conversation_id": conversation_id
             }
-    else:
-        raise HTTPException(status_code=400, detail="Invalid query generated.")
+
+        # ✅ Generate Excel asynchronously
+        await generate_excel(conversation_id, query_results)
+
+        return response_data
 
 @router.post("/admin/signup/", response_model=dict)
 async def signup(admin: AdminSignup):
@@ -100,3 +103,35 @@ async def login(admin: AdminLogin):
 async def dashboard(admin: dict = Depends(get_current_admin)):
     """Protected admin dashboard"""
     return {"message": f"Welcome, {admin['email']}!"}
+
+
+@router.get("/download-excel/{conversation_id}/")
+async def download_excel(conversation_id: str, admin: dict = Depends(get_current_admin)):
+    """Endpoint to download an Excel file based on conversation ID."""
+    file_path = get_excel_path(conversation_id)
+    
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"conversation_{conversation_id}.xlsx"
+    )
+
+@router.delete("/migrate-thread/{thread_id}")
+async def migrate_and_delete_thread(thread_id: str):
+    """
+    Migrate a thread to MongoDB and delete it from Redis.
+    """
+    try:
+        result = delete_from_redis(thread_id)
+        
+        if isinstance(result, tuple):  # Check if it returned an error
+            raise HTTPException(status_code=result[1], detail=result[0]["message"])
+
+        return {"message": "Thread successfully migrated and deleted from Redis."}
+
+    except Exception as e:
+        logging.error(f"Error migrating thread {thread_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
