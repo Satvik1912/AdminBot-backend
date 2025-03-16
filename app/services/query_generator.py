@@ -15,7 +15,7 @@ def generate_sql(user_input: str) -> str:
         "Otherwise, convert the request into an SQL query using the table 'loan24'. "
         "Only return the classification or the SQL query, nothing else. "
         "The SQL query should always start with SELECT."
-    )
+    ) 
 
     response = model.generate_content([system_instruction, user_input])
     output = response.text.strip().strip("`").strip("sql").strip()
