@@ -3,8 +3,9 @@ from datetime import datetime
 from app.services.database import admins_collection
 from app.models.admin import AdminSignup, AdminLogin
 from datetime import datetime, timedelta
-
-
+from bson import ObjectId 
+from jose import jwt
+from app.core.config import JWT_SECRET_KEY, JWT_ALGORITHM
 # Password hashing setup
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -26,13 +27,13 @@ async def admin_signup(admin: AdminSignup):
 async def admin_login(email, password):
     """Authenticates an admin and returns a JWT token"""
     admin = admins_collection.find_one({"email": email})
+    # Convert ObjectId to string for JWT payload
+    admin_id = str(admin["_id"])
     if not admin or not pwd_context.verify(password, admin["password"]):
         return None  # Invalid login
 
-    # Generate JWT Token
-    from jose import jwt
-    from app.core.config import JWT_SECRET_KEY, JWT_ALGORITHM
-    token_data = {"sub": email, "exp": datetime.utcnow() + timedelta(minutes=60)}
+    
+    token_data = {"sub": email,"admin_id": admin_id, "exp": datetime.utcnow() + timedelta(minutes=60)}
     access_token = jwt.encode(token_data, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     
     return {"access_token": access_token, "token_type": "bearer"}

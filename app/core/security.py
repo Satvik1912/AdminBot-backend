@@ -31,8 +31,9 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         email: str = payload.get("sub")
+        admin_id: str = payload.get("admin_id")
         if not email:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return {"email": email}
+        return {"email": email, "admin_id": admin_id}
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")

@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from typing import Optional
+from uuid import UUID
 
-# Define the expected request body
 class UserInputRequest(BaseModel):
     user_input: str
+    thread_id: Optional[UUID] = None  # Optional UUID field
     
 class ConversationRecord(BaseModel):
     conversation_id: str

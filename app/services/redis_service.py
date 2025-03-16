@@ -77,3 +77,22 @@ def delete_from_redis(thread_id):
     redis_client.delete(f"admin_thread:{thread_id}:conversations")
 
     return {"message": "Thread deleted", "thread_id": thread_id}
+# Function to store Excel file path in Redis
+def store_excel_path(conversation_id: str, file_path: str):
+    """Store the Excel file path in Redis."""
+    redis_client.set(f"excel:{conversation_id}", file_path)
+
+# Function to retrieve the Excel file path from Redis
+def get_excel_path(conversation_id: str):
+    """Retrieve the Excel file path from Redis."""
+    return redis_client.get(f"excel:{conversation_id}")
+
+def get_last_n_conversations(thread_id: str, n: int = 5):
+    """Fetch last N user queries from Redis for a given thread."""
+    key = f"admin_thread:{thread_id}:conversations"
+
+    # Get last `n` conversations from Redis
+    conversations = redis_client.lrange(key, -n, -1)
+
+    # Extract only user questions (queries) from conversations
+    return [json.loads(conv)["query"] for conv in conversations if "query" in json.loads(conv)]
