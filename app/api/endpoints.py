@@ -18,15 +18,37 @@ import logging
 from datetime import datetime
 from app.core.config import *
 
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi.responses import FileResponse
+from app.services.query_generator import generate_sql
+from app.services.database import execute_sql_query
+from app.services.result_formatter import format_results
+from app.models.models import *
+from app.models.admin import AdminSignup, AdminLogin, TokenResponse
+from app.services.auth_services import admin_signup, admin_login
+from app.core.security import get_current_admin
+from app.services.visualization_service import get_chart_suggestion, generate_plotly_chart
+from app.services.redis_service import *
+from app.services.mongo_service import *
+from app.services.excel_service import generate_excel, get_excel_path
+import uuid
+import os
+import logging
+from datetime import datetime, timedelta
+from app.core.config import *
+import random
+import string
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+
+# Set up MongoDB OTP collection
+from app.services.database import client, db
+
 router = APIRouter()
 
-@router.post("/admin/signup/", response_model=dict)
-async def signup(admin: AdminSignup):
-    """Registers a new admin"""
-    response = await admin_signup(admin)
-    if "error" in response:
-        raise HTTPException(status_code=400, detail=response["error"])
-    return response
+
 
 @router.post("/admin/login/", response_model=TokenResponse)
 async def login(admin: AdminLogin):
@@ -198,33 +220,6 @@ async def fetch_threads_and_conversations(
 
 
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import FileResponse
-from app.services.query_generator import generate_sql
-from app.services.database import execute_sql_query
-from app.services.result_formatter import format_results
-from app.models.models import *
-from app.models.admin import AdminSignup, AdminLogin, TokenResponse
-from app.services.auth_services import admin_signup, admin_login
-from app.core.security import get_current_admin
-from app.services.visualization_service import get_chart_suggestion, generate_plotly_chart
-from app.services.redis_service import *
-from app.services.mongo_service import *
-from app.services.excel_service import generate_excel, get_excel_path
-import uuid
-import os
-import logging
-from datetime import datetime, timedelta
-from app.core.config import *
-import random
-import string
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-
-# Set up MongoDB OTP collection
-from app.services.database import client, db
 otp_collection = db["otp"]
 
 # Email configuration
