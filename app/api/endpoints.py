@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from app.services.query_generator import generate_sql
@@ -40,15 +41,19 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
     sql_query = generate_sql(request.user_input, request.thread_id if hasattr(request, "thread_id") else None)
 
     logging.info(sql_query)
-    if sql_query.lower() in ["unwanted", "restricted", "sensitive"]:
-        return {"message": sql_query}
+    if sql_query.lower() == "unwanted":
+        return {"message": "I will answer only loan-related questions."}
+    elif sql_query.lower() == "restricted":
+        return {"message": "You can only read the data; modifications or creations are not allowed."}
+    elif sql_query.lower() == "ensitive":
+        return {"message": "I won’t provide any sensitive data of users."}
 
     elif sql_query.lower().startswith("select"):
         query_results = execute_sql_query(sql_query)
         logging.info(f"Query Results Type: {type(query_results)}")
         formatted_response = format_results(query_results)
-        chart_type = get_chart_suggestion(query_results, request.user_input)
-        chart_img = generate_plotly_chart(query_results, chart_type, request.user_input)
+        # chart_type = get_chart_suggestion(query_results, request.user_input)
+        # chart_img = generate_plotly_chart(query_results, chart_type, request.user_input)
 
         conversation_id = str(uuid.uuid4())
 
@@ -56,9 +61,9 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
             conversation_id=conversation_id,
             query=request.user_input,
             response=formatted_response,
-            visualization=chart_img,
+            visualization="chart_img",
             timestamp=datetime.utcnow().isoformat(),
-            data_type=[chart_type] if chart_type else []
+            data_type=["chart_type"] if "chart_type" else []
         )
 
         if hasattr(request, "thread_id") and request.thread_id:
@@ -66,9 +71,9 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
             response_data = {
                 "sql_query": sql_query,
                 "results": formatted_response,
-                "chart_type": chart_type,
-                "chart_image_url": chart_img,
-                "message": "Conversation appended",
+                "chart_type": "chart_type",
+                "chart_image_url": "chart_img",
+                "message": "",
                 "thread_id": request.thread_id,
                 "conversation_count": append_result["total_conversations"],
                 "conversation_id": conversation_id
@@ -85,9 +90,9 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
             response_data = {
                 "sql_query": sql_query,
                 "results": formatted_response,
-                "chart_type": chart_type,
-                "chart_image_url": chart_img,
-                "message": "New chat thread created",
+                "chart_type": "chart_type",
+                "chart_image_url": "chart_img",
+                "message": "",
                 "thread_id": thread_id,
                 "conversation_id": conversation_id
             }
