@@ -198,6 +198,149 @@ async def fetch_threads_and_conversations(
 
 
 
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi.responses import FileResponse
+from app.services.query_generator import generate_sql
+from app.services.database import execute_sql_query
+from app.services.result_formatter import format_results
+from app.models.models import *
+from app.models.admin import AdminSignup, AdminLogin, TokenResponse
+from app.services.auth_services import admin_signup, admin_login
+from app.core.security import get_current_admin
+from app.services.visualization_service import get_chart_suggestion, generate_plotly_chart
+from app.services.redis_service import *
+from app.services.mongo_service import *
+from app.services.excel_service import generate_excel, get_excel_path
+import uuid
+import os
+import logging
+from datetime import datetime, timedelta
+from app.core.config import *
+import random
+import string
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+
+# Set up MongoDB OTP collection
+from app.services.database import client, db
+otp_collection = db["otp"]
+
+# Email configuration
+ADMIN_EMAIL = "tejasvp1@gmail.com"  # Hardcoded admin email
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USER = "loans24otp@gmail.com"  # Your Gmail address
+EMAIL_PASSWORD = "laca zuzp pmuw xrac"  # Your Gmail app password
+
+def generate_otp(length=6):
+    """Generate a random OTP of specified length"""
+    digits = string.digits
+    return ''.join(random.choice(digits) for _ in range(length))
+
+async def send_email(email, otp):
+    """Send OTP via email using Gmail SMTP"""
+    message = MIMEMultipart()
+    message["From"] = EMAIL_USER
+    message["To"] = email
+    message["Subject"] = "Your OTP for Admin Registration"
+    
+    body = f"""
+    <html>
+    <body>
+        <h2>Admin Registration OTP</h2>
+        <p>Your One-Time Password (OTP) for admin registration is: <strong>{otp}</strong></p>
+        <p>This OTP will expire in 5 minutes.</p>
+    </body>
+    </html>
+    """
+    
+    message.attach(MIMEText(body, "html"))
+    
+    try:
+        server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_USER, email, message.as_string())
+        server.quit()
+        logging.info(f"OTP email sent successfully to {email}")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to send email: {str(e)}")
+        return False
+
+@router.post("/admin/request-otp/")
+async def request_otp(background_tasks: BackgroundTasks):
+    """Generate and send OTP to the hardcoded admin email"""
+    try:
+        # Generate a 6-digit OTP
+        otp = generate_otp(6)
+        
+        # Store OTP in MongoDB with expiration time (5 minutes)
+        expiry_time = datetime.utcnow() + timedelta(minutes=5)
+        
+        # Check if there's an existing OTP for this email and update it
+        existing_otp = otp_collection.find_one({"email": ADMIN_EMAIL})
+        if existing_otp:
+            otp_collection.update_one(
+                {"email": ADMIN_EMAIL},
+                {"$set": {
+                    "otp": otp,
+                    "expiry_time": expiry_time,
+                    "created_at": datetime.utcnow()
+                }}
+            )
+        else:
+            otp_collection.insert_one({
+                "email": ADMIN_EMAIL,
+                "otp": otp,
+                "expiry_time": expiry_time,
+                "created_at": datetime.utcnow()
+            })
+        
+        # Send OTP email in background
+        background_tasks.add_task(send_email, ADMIN_EMAIL, otp)
+        
+        return {"message": f"OTP sent to {ADMIN_EMAIL}", "email": ADMIN_EMAIL}
+    
+    except Exception as e:
+        logging.error(f"Error generating OTP: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate and send OTP")
+
+@router.post("/admin/signup/", response_model=dict)
+async def signup(admin: AdminSignup):
+    """Registers a new admin with OTP verification"""
+    # Check if OTP exists and is valid
+    otp_record = otp_collection.find_one({"email": ADMIN_EMAIL})
+    
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="No OTP found. Please request an OTP first.")
+    
+    if otp_record["otp"] != admin.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP. Please try again.")
+    
+    # Check if OTP has expired
+    if datetime.utcnow() > otp_record["expiry_time"]:
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")
+    
+    # Proceed with admin signup if OTP is valid
+    response = await admin_signup(admin)
+    if "error" in response:
+        raise HTTPException(status_code=400, detail=response["error"])
+    
+    # Delete the used OTP
+    otp_collection.delete_one({"email": ADMIN_EMAIL})
+    
+    return response
+
+
+
+# ... [rest of your routes]
+
+
+
+
 # from fastapi import APIRouter, HTTPException
 # from app.services.query_generator import generate_sql
 # from app.services.database import execute_sql_query
