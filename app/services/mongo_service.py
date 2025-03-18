@@ -130,6 +130,8 @@ def insert_into_conversations(thread_id: str, admin_id: str, conversation: dict)
         "visualization": conversation.get("visualization"),
         "timestamp": conversation["timestamp"],
         "data_type": conversation.get("data_type"),
+        "cols": conversation.get("cols"),
+        "rows": conversation.get("rows"),
         "excel_path": conversation["excel_path"]
     }
     conversations_collection.insert_one(conversation_doc)

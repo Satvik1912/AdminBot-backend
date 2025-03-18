@@ -31,6 +31,7 @@ from app.services.visualization_service import get_chart_suggestion, generate_pl
 from app.services.redis_service import *
 from app.services.mongo_service import *
 from app.services.excel_service import generate_excel, get_excel_path
+from app.services.extract_tables_service import *
 import uuid
 import os
 import logging
@@ -85,6 +86,7 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
         query_results = execute_sql_query(sql_query)
         logging.info(f"Query Results Type: {type(query_results)}")
         formatted_response = format_results(query_results)
+        tables, cols = extract_tables_and_columns(sql_query)
         # chart_type = get_chart_suggestion(query_results, request.user_input)
         # chart_img = generate_plotly_chart(query_results, chart_type, request.user_input)
 
@@ -97,7 +99,9 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
             "response": formatted_response,
             "visualization": "chart_img",
             "timestamp": datetime.utcnow().isoformat(),
-            "data_type": ["chart_type"] if "chart_type" else [],
+            "data_type": tables,
+            "cols": cols,
+            "rows": len(query_results),
             "excel_path": EXCEL_STORAGE_PATH+f"/{conversation_id}"
         }
 

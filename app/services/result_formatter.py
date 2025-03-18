@@ -10,12 +10,15 @@ genai.configure(api_key=config.GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 def serialize_dates(obj):
-    """Convert non-serializable types (datetime, Decimal) to serializable formats."""
+    """Convert non-serializable types (datetime, Decimal, bytes) to serializable formats."""
     if isinstance(obj, (datetime.date, datetime.datetime)):
         return obj.isoformat()
     elif isinstance(obj, Decimal):
         return float(obj)
+    elif isinstance(obj, bytes):  # Convert bytes to string
+        return obj.decode() if obj.decode(errors="ignore") else obj.hex()
     raise TypeError(f"Type not serializable: {type(obj)}")
+
 
 def format_results(results):
     logging.info(results)
