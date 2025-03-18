@@ -12,7 +12,7 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
-def insert_into_redis(data):
+def insert_into_redis(data,ttl=10800):
     thread_id = data["thread_id"]
     thread_key = f"admin_thread:{thread_id}"
 
@@ -23,14 +23,16 @@ def insert_into_redis(data):
         "chat_name": data["chat_name"],
     }
     redis_client.hset(thread_key, mapping=thread_data)
+    redis_client.expire(thread_key, ttl)  # Set TTL
 
     # Store conversations in a list
     for conversation in data.get("conversations", []):
         redis_client.rpush(f"{thread_key}:conversations", json.dumps(conversation))
+    redis_client.expire(f"{thread_key}:conversations", ttl)  # Set TTL for conversations list
 
     return {"message": "Chat thread inserted successfully", "thread_id": thread_id}
 
-def append_conversation(thread_id: str, conversation: dict):
+def append_conversation(thread_id: str, conversation: dict, ttl=10800):
     key = f"admin_thread:{thread_id}:conversations"
 
     # Convert dictionary to JSON string before storing in Redis
@@ -38,6 +40,10 @@ def append_conversation(thread_id: str, conversation: dict):
 
     # Append the conversation to the Redis list
     redis_client.rpush(key, conversation_json)
+
+    # Refresh TTL when a new conversation is added
+    redis_client.expire(key, ttl)  
+    redis_client.expire(f"admin_thread:{thread_id}", ttl)  
 
     # Get updated conversation count
     conversation_count = redis_client.llen(key)
@@ -87,9 +93,11 @@ def delete_from_redis(thread_id):
 
     return {"message": "Thread deleted", "thread_id": thread_id}
 # Function to store Excel file path in Redis
-def store_excel_path(conversation_id: str, file_path: str):
+def store_excel_path(conversation_id: str, file_path: str, ttl=10800):
     """Store the Excel file path in Redis."""
     redis_client.set(f"excel:{conversation_id}", file_path)
+    # Ensure TTL is applied
+    redis_client.expire(f"excel:{conversation_id}", ttl)
 
 # Function to retrieve the Excel file path from Redis
 def get_excel_path(conversation_id: str):
