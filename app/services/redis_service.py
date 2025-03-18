@@ -1,7 +1,5 @@
 import redis
 import json
-import app.services.mongo_service as mongo
-import logging
 from app.core.config import config
 
 # Initialize Redis client using values from config
@@ -80,18 +78,6 @@ def get_from_redis(thread_id):
     }
     return thread_data
 
-# Function to delete a record from Redis
-def delete_from_redis(thread_id):
-    
-    # Check if thread exists
-    if not redis_client.exists(f"admin_thread:{thread_id}"):
-        return {"message": "Thread not found"}, 404
-    logging.info(mongo.migrate_thread_to_mongo(thread_id))
-    # Delete thread and conversations
-    redis_client.delete(f"admin_thread:{thread_id}")
-    redis_client.delete(f"admin_thread:{thread_id}:conversations")
-
-    return {"message": "Thread deleted", "thread_id": thread_id}
 # Function to store Excel file path in Redis
 def store_excel_path(conversation_id: str, file_path: str, ttl=10800):
     """Store the Excel file path in Redis."""
