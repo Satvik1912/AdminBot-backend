@@ -260,7 +260,6 @@ async def fetch_threads_and_conversations(
         logger.debug(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-otp_collection = db["otp"]
 @router.post("/admin/request-otp/")
 async def request_otp(background_tasks: BackgroundTasks):
     """Generate and send OTP to the configured admin email for registration verification"""
@@ -271,33 +270,29 @@ async def request_otp(background_tasks: BackgroundTasks):
         otp = generate_otp(6)
         logger.debug("OTP generated successfully")
         
-        # Store OTP in MongoDB with expiration time (5 minutes)
-        expiry_time = datetime.utcnow() + timedelta(minutes=5)
+        # Store OTP in Redis with expiration time (5 minutes)
+        expiry_seconds = 2 * 60  # 2 minutes in seconds
         
         try:
-            # Check if there's an existing OTP for this email and update it
-            existing_otp = otp_collection.find_one({"email": config.ADMIN_EMAIL})
-            if existing_otp:
-                logger.debug(f"Updating existing OTP for {config.ADMIN_EMAIL}")
-                otp_collection.update_one(
-                    {"email": config.ADMIN_EMAIL},
-                    {"$set": {
-                        "otp": otp,
-                        "expiry_time": expiry_time,
-                        "created_at": datetime.utcnow()
-                    }}
-                )
-            else:
-                logger.debug(f"Creating new OTP for {config.ADMIN_EMAIL}")
-                otp_collection.insert_one({
-                    "email": config.ADMIN_EMAIL,
-                    "otp": otp,
-                    "expiry_time": expiry_time,
-                    "created_at": datetime.utcnow()
-                })
-            logger.info(f"OTP stored in database for {config.ADMIN_EMAIL}")
-        except Exception as db_error:
-            logger.error(f"Database error storing OTP: {str(db_error)}")
+            # Create OTP data to store
+            otp_data = {
+                "email": config.ADMIN_EMAIL,
+                "otp": otp,
+                "created_at": datetime.utcnow().isoformat()
+            }
+            
+            # Set the OTP in Redis with expiration
+            redis_key = f"otp:{config.ADMIN_EMAIL}"
+            redis_client.setex(
+                redis_key,
+                expiry_seconds,
+                json.dumps(otp_data)
+            )
+            
+            logger.info(f"OTP stored in Redis for {config.ADMIN_EMAIL} with {expiry_seconds}s expiry")
+            
+        except Exception as redis_error:
+            logger.error(f"Redis error storing OTP: {str(redis_error)}")
             logger.debug(traceback.format_exc())
             raise HTTPException(status_code=500, detail="Failed to store OTP")
         
@@ -324,22 +319,22 @@ async def signup(admin: AdminSignup):
         # Validate OTP
         try:
             # Check if OTP exists and is valid
-            otp_record = otp_collection.find_one({"email": config.ADMIN_EMAIL})
+            redis_key = f"otp:{config.ADMIN_EMAIL}"
+            otp_data_str = redis_client.get(redis_key)
             
-            if not otp_record:
+            if not otp_data_str:
                 logger.warning(f"No OTP found for {config.ADMIN_EMAIL}")
-                raise HTTPException(status_code=400, detail="No OTP found. Please request an OTP first.")
+                raise HTTPException(status_code=400, detail="No OTP found or OTP expired. Please request a new OTP.")
             
-            if otp_record["otp"] != admin.otp:
+            # Parse the stored OTP data
+            otp_data = json.loads(otp_data_str)
+            
+            if otp_data["otp"] != admin.otp:
                 logger.warning(f"Invalid OTP provided for {config.ADMIN_EMAIL}")
                 raise HTTPException(status_code=400, detail="Invalid OTP. Please try again.")
             
-            # Check if OTP has expired
-            if datetime.utcnow() > otp_record["expiry_time"]:
-                logger.warning(f"Expired OTP for {config.ADMIN_EMAIL}")
-                raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")
-            
             logger.info(f"OTP validation successful for {config.ADMIN_EMAIL}")
+            
         except HTTPException as he:
             raise he
         except Exception as e:
@@ -364,7 +359,7 @@ async def signup(admin: AdminSignup):
         
         # Delete the used OTP
         try:
-            otp_collection.delete_one({"email": config.ADMIN_EMAIL})
+            redis_client.delete(redis_key)
             logger.debug(f"Used OTP deleted for {config.ADMIN_EMAIL}")
         except Exception as e:
             logger.error(f"Failed to delete used OTP: {str(e)}")
@@ -376,5 +371,3 @@ async def signup(admin: AdminSignup):
         raise he
     except Exception as e:
         logger.error(f"Unhandled error in admin signup: {str(e)}")
-        logger.debug(traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Internal server error during signup")
