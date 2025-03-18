@@ -67,7 +67,12 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
             except Exception as e:
                 logger.debug(traceback.format_exc())
                 raise HTTPException(status_code=500, detail="Failed to execute database query")
-            
+            try:
+                chart_type = get_chart_suggestion(query_results,request.user_input)
+                chart_img = generate_plotly_chart(query_results,chart_type,request.user_input)
+            except Exception as e:
+                logger.debug(traceback.format_exc())
+                raise HTTPException(status_code=500, detail="Failed to generate chart")
             # Format results
             try:
                 formatted_response = format_results(query_results)
@@ -85,7 +90,7 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
                 "conversation_id": conversation_id,
                 "query": request.user_input,
                 "response": formatted_response,
-                "visualization": "chart_img",
+                "visualization": chart_img,
                 "timestamp": datetime.utcnow().isoformat(),
                 "data_type": tables,
                 "cols": cols,
@@ -107,8 +112,8 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
                 response_data = {
                     "sql_query": sql_query,
                     "results": formatted_response,
-                    "chart_type": "chart_type",
-                    "chart_image_url": "chart_img",
+                    "chart_type": chart_type,
+                    "chart_image_url": chart_img,
                     "message": "",
                     "thread_id": request.thread_id,
                     "conversation_count": append_result["total_conversations"],
@@ -147,8 +152,8 @@ async def process_user_input(request: UserInputRequest, admin: dict = Depends(ge
                 response_data = {
                     "sql_query": sql_query,
                     "results": formatted_response,
-                    "chart_type": "chart_type",
-                    "chart_image_url": "chart_img",
+                    "chart_type": chart_type,
+                    "chart_image_url": chart_img,
                     "message": "",
                     "thread_id": thread_id,
                     "conversation_id": conversation_id,

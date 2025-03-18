@@ -26,7 +26,10 @@ def generate_sql(user_input: str, thread_id: str = None) -> str:
         "- Return 'unwanted' if the query is not about loans, banking, or EMIs.\n"
         "- Return 'restricted' if the query tries to generate non-SELECT queries.\n"
         "- Return 'sensitive' if it asks for CVV,password,pan and aadhar details or database structure and other database structure related questions.\n"
-        "- Otherwise, generate a SQL query for the 'loan' and 'emi' table.\n\n"
+        "- Otherwise, generate a SQL query for the 'loan', 'emi', 'users' and 'user_information' table.\n\n"
+        "you are supposed to understand the schema and return the columns which wll be used for plotting graph later on"
+        "UNDERSTAND ALL THE REQUIRED COLUMNS FROM THE TABLES TO GENERATE A PERFECT SQL QUERY PLEASE"
+
         """We have four tables: loan, emi, user_information, users.
 
 The loan table contains the following columns:

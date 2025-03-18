@@ -30,6 +30,14 @@ def format_results(results):
         response = model.generate_content(prompt)
         logging.info(f"Chatbot response: {response.text.strip()}")
         return response.text.strip()
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON formatting error: {e}")
+        return "Error processing data for insights."
+
+    except genai.types.APIError as e:
+        logging.error(f"Gemini API error: {e}")
+        return "AI service is currently unavailable. Please try again later."
+
     except Exception as e:
-        logging.error(f"Error formatting results: {e}")
-        return f"Error formatting results: {str(e)}"
+        logging.error(f"Unexpected error formatting results: {e}", exc_info=True)
+        return "An unexpected error occurred while generating insights."
