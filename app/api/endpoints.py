@@ -213,7 +213,7 @@ async def fetch_threads_and_conversations(
     admin: dict = Depends(get_current_admin), 
     thread_id: str = None, 
     page: int = 1, 
-    limit: int = 10
+    limit: int = 20
 ):
     """
     Fetch all threads for an admin or fetch paginated conversations for a specific thread
