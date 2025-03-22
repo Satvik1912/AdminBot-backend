@@ -28,6 +28,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login/")
 
 async def get_current_admin(token: str = Depends(oauth2_scheme)):
+    print("Token received:", token)  # Debugging
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         email: str = payload.get("sub")
@@ -37,3 +38,5 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)):
         return {"email": email, "admin_id": admin_id}
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+

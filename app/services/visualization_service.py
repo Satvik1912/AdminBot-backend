@@ -259,4 +259,8 @@ def generate_plotly_chart(data: List[Dict[str, Any]], chart_type: str, user_quer
 
     except Exception as e:
         logger.error(f"Error generating chart: {str(e)}")
+<<<<<<< HEAD
         return ""
+=======
+        return ""
+>>>>>>> 0459ae63127c91fd90e7a1fde195160c91d537d6
